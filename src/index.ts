@@ -19,6 +19,16 @@ import os from 'os';
 import {createEmailMessage, createEmailWithNodemailer} from "./utl.js";
 import { createLabel, updateLabel, deleteLabel, listLabels, findLabelByName, getOrCreateLabel, GmailLabel } from "./label-manager.js";
 import { createFilter, listFilters, getFilter, deleteFilter, filterTemplates, GmailFilterCriteria, GmailFilterAction } from "./filter-manager.js";
+import {
+    CategorizeEmailSchema,
+    ExtractEmailContextSchema,
+    DetectColdEmailSchema,
+    BatchAnalyzeEmailsSchema,
+    categorizeEmail,
+    extractEmailContext,
+    detectColdEmail,
+    batchAnalyzeEmails,
+} from "./ai-tools.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -437,6 +447,26 @@ async function main() {
                 name: "download_attachment",
                 description: "Downloads an email attachment to a specified location",
                 inputSchema: zodToJsonSchema(DownloadAttachmentSchema),
+            },
+            {
+                name: "categorize_email",
+                description: "AI-powered email categorization (NEWSLETTER, MARKETING, CALENDAR, RECEIPT, NOTIFICATION, PERSONAL, WORK, COLD_EMAIL)",
+                inputSchema: zodToJsonSchema(CategorizeEmailSchema),
+            },
+            {
+                name: "extract_email_context",
+                description: "Extract key information from emails for AI agent context (summary, key points, action items, people, dates)",
+                inputSchema: zodToJsonSchema(ExtractEmailContextSchema),
+            },
+            {
+                name: "detect_cold_email",
+                description: "Detect unsolicited cold emails (sales, recruitment, partnerships) with confidence scoring",
+                inputSchema: zodToJsonSchema(DetectColdEmailSchema),
+            },
+            {
+                name: "batch_analyze_emails",
+                description: "Batch analysis of multiple emails for categorization, context extraction, and cold email detection",
+                inputSchema: zodToJsonSchema(BatchAnalyzeEmailsSchema),
             },
         ],
     }))
@@ -1178,6 +1208,208 @@ async function main() {
                                 {
                                     type: "text",
                                     text: `Failed to download attachment: ${error.message}`,
+                                },
+                            ],
+                        };
+                    }
+                }
+
+                case "categorize_email": {
+                    const validatedArgs = CategorizeEmailSchema.parse(args);
+
+                    try {
+                        // Helper to get email data for categorization
+                        const getEmailData = async (messageId: string) => {
+                            const response = await gmail.users.messages.get({
+                                userId: 'me',
+                                id: messageId,
+                                format: 'metadata',
+                                metadataHeaders: ['From', 'Subject'],
+                            });
+
+                            const headers = response.data.payload?.headers || [];
+                            const from = headers.find(h => h.name === 'From')?.value || '';
+                            const subject = headers.find(h => h.name === 'Subject')?.value || '';
+                            const snippet = response.data.snippet || '';
+
+                            return { from, subject, snippet };
+                        };
+
+                        const result = await categorizeEmail(validatedArgs, getEmailData);
+
+                        return {
+                            content: [
+                                {
+                                    type: "text",
+                                    text: JSON.stringify(result, null, 2),
+                                },
+                            ],
+                        };
+                    } catch (error: any) {
+                        return {
+                            content: [
+                                {
+                                    type: "text",
+                                    text: `Failed to categorize email: ${error.message}`,
+                                },
+                            ],
+                        };
+                    }
+                }
+
+                case "extract_email_context": {
+                    const validatedArgs = ExtractEmailContextSchema.parse(args);
+
+                    try {
+                        // Helper to get email data for context extraction
+                        const getEmailData = async (messageId: string) => {
+                            const response = await gmail.users.messages.get({
+                                userId: 'me',
+                                id: messageId,
+                                format: 'full',
+                            });
+
+                            const headers = response.data.payload?.headers || [];
+                            const from = headers.find(h => h.name?.toLowerCase() === 'from')?.value || '';
+                            const subject = headers.find(h => h.name?.toLowerCase() === 'subject')?.value || '';
+
+                            // Extract email content
+                            const { text, html } = extractEmailContent(response.data.payload as GmailMessagePart || {});
+                            const body = text || html || '';
+
+                            return { from, subject, body };
+                        };
+
+                        // Helper to get thread data if needed
+                        const getThreadData = async (threadId: string, maxMessages: number) => {
+                            const response = await gmail.users.threads.get({
+                                userId: 'me',
+                                id: threadId,
+                                format: 'full',
+                            });
+
+                            const messages = response.data.messages || [];
+                            return messages.slice(0, maxMessages).map(msg => {
+                                const headers = msg.payload?.headers || [];
+                                const from = headers.find(h => h.name?.toLowerCase() === 'from')?.value || '';
+                                const subject = headers.find(h => h.name?.toLowerCase() === 'subject')?.value || '';
+                                const { text, html } = extractEmailContent(msg.payload as GmailMessagePart || {});
+                                const body = text || html || '';
+                                return { from, subject, body };
+                            });
+                        };
+
+                        const result = await extractEmailContext(
+                            validatedArgs,
+                            getEmailData,
+                            validatedArgs.threadId ? getThreadData : undefined
+                        );
+
+                        return {
+                            content: [
+                                {
+                                    type: "text",
+                                    text: JSON.stringify(result, null, 2),
+                                },
+                            ],
+                        };
+                    } catch (error: any) {
+                        return {
+                            content: [
+                                {
+                                    type: "text",
+                                    text: `Failed to extract email context: ${error.message}`,
+                                },
+                            ],
+                        };
+                    }
+                }
+
+                case "detect_cold_email": {
+                    const validatedArgs = DetectColdEmailSchema.parse(args);
+
+                    try {
+                        // Helper to get email data for cold email detection
+                        const getEmailData = async (messageId: string) => {
+                            const response = await gmail.users.messages.get({
+                                userId: 'me',
+                                id: messageId,
+                                format: 'full',
+                            });
+
+                            const headers = response.data.payload?.headers || [];
+                            const from = headers.find(h => h.name?.toLowerCase() === 'from')?.value || '';
+                            const subject = headers.find(h => h.name?.toLowerCase() === 'subject')?.value || '';
+
+                            // Extract email content
+                            const { text, html } = extractEmailContent(response.data.payload as GmailMessagePart || {});
+                            const body = text || html || '';
+
+                            return { from, subject, body };
+                        };
+
+                        const result = await detectColdEmail(validatedArgs, getEmailData);
+
+                        return {
+                            content: [
+                                {
+                                    type: "text",
+                                    text: JSON.stringify(result, null, 2),
+                                },
+                            ],
+                        };
+                    } catch (error: any) {
+                        return {
+                            content: [
+                                {
+                                    type: "text",
+                                    text: `Failed to detect cold email: ${error.message}`,
+                                },
+                            ],
+                        };
+                    }
+                }
+
+                case "batch_analyze_emails": {
+                    const validatedArgs = BatchAnalyzeEmailsSchema.parse(args);
+
+                    try {
+                        // Helper to get email data for batch analysis
+                        const getEmailData = async (messageId: string) => {
+                            const response = await gmail.users.messages.get({
+                                userId: 'me',
+                                id: messageId,
+                                format: 'full',
+                            });
+
+                            const headers = response.data.payload?.headers || [];
+                            const from = headers.find(h => h.name?.toLowerCase() === 'from')?.value || '';
+                            const subject = headers.find(h => h.name?.toLowerCase() === 'subject')?.value || '';
+                            const snippet = response.data.snippet || '';
+
+                            // Extract email content
+                            const { text, html } = extractEmailContent(response.data.payload as GmailMessagePart || {});
+                            const body = text || html || '';
+
+                            return { from, subject, snippet, body };
+                        };
+
+                        const result = await batchAnalyzeEmails(validatedArgs, getEmailData);
+
+                        return {
+                            content: [
+                                {
+                                    type: "text",
+                                    text: JSON.stringify(result, null, 2),
+                                },
+                            ],
+                        };
+                    } catch (error: any) {
+                        return {
+                            content: [
+                                {
+                                    type: "text",
+                                    text: `Failed to batch analyze emails: ${error.message}`,
                                 },
                             ],
                         };

@@ -445,6 +445,236 @@ Creates a filter using pre-defined templates for common scenarios.
 }
 ```
 
+---
+
+## 🤖 AI-Powered Email Analysis Tools (NEW)
+
+The server now includes **4 AI-powered tools** for intelligent email analysis using Claude/OpenAI/Gemini LLMs:
+
+### 19. Categorize Email (`categorize_email`)
+**AI-powered email categorization** with confidence scoring and label suggestions.
+
+**Categories**: NEWSLETTER, MARKETING, CALENDAR, RECEIPT, NOTIFICATION, PERSONAL, WORK, COLD_EMAIL
+
+**Example**:
+```json
+{
+  "messageId": "182ab45cd67ef"
+}
+```
+
+**Response**:
+```json
+{
+  "category": "NEWSLETTER",
+  "confidence": 0.95,
+  "reasoning": "Email contains unsubscribe link and regular sending pattern from digest@medium.com",
+  "suggestedLabels": ["Label_Newsletter"]
+}
+```
+
+**Use Cases**:
+- Automatic inbox organization
+- Spam/cold email detection
+- Smart filtering and labeling
+- Email triage automation
+
+---
+
+### 20. Extract Email Context (`extract_email_context`)
+**Extract key information from emails** for AI agent context and decision-making.
+
+**Extracts**: Summary, key points, action items, people, dates, relevant context
+
+**Example**:
+```json
+{
+  "messageId": "182ab45cd67ef",
+  "threadId": "thread_abc123",
+  "maxHistoryMessages": 10
+}
+```
+
+**Response**:
+```json
+{
+  "summary": "Client requesting proposal for Q1 2026 Amazon Prime Video campaign with $500K budget",
+  "keyPoints": [
+    "Budget: $500K",
+    "Target audience: Sports enthusiasts 25-45",
+    "Focus on OLV formats"
+  ],
+  "actionItems": [
+    "Submit proposal by January 15, 2026",
+    "Include Creative Science case studies"
+  ],
+  "people": [
+    {
+      "name": "Sarah Johnson",
+      "email": "sjohnson@client.com",
+      "role": "Marketing Director"
+    }
+  ],
+  "dates": [
+    {
+      "date": "2026-01-15",
+      "context": "Proposal deadline"
+    },
+    {
+      "date": "2026-02-01",
+      "context": "Campaign start date"
+    }
+  ],
+  "relevantContext": "High-priority RFP for major Amazon Prime Video campaign targeting sports enthusiasts. Client emphasizes data-driven creative optimization and proven case studies...",
+  "confidence": 0.92
+}
+```
+
+**Use Cases**:
+- Pre-meeting preparation (extract context before client calls)
+- RFP analysis (identify requirements, budget, deadlines)
+- CRM note generation (auto-extract key info for Salesforce)
+- Support ticket analysis (extract error patterns and context)
+
+---
+
+### 21. Detect Cold Email (`detect_cold_email`)
+**Identify unsolicited sales/recruitment emails** with confidence scoring and action recommendations.
+
+**Types**: SALES, RECRUITMENT, PARTNERSHIP, LEGITIMATE, UNKNOWN
+
+**Example**:
+```json
+{
+  "messageId": "182ab45cd67ef",
+  "userProfile": {
+    "company": "Acme Corp",
+    "role": "Account Executive",
+    "interests": ["programmatic advertising", "Amazon DSP"]
+  }
+}
+```
+
+**Response**:
+```json
+{
+  "isColdEmail": true,
+  "coldEmailType": "SALES",
+  "confidence": 0.88,
+  "reasoning": "Generic greeting ('I hope this email finds you well'), requests meeting without prior relationship, sender researched LinkedIn profile",
+  "suggestedAction": "ARCHIVE"
+}
+```
+
+**Use Cases**:
+- Inbox cleanup (bulk archive cold emails)
+- Spam filtering (more nuanced than traditional spam detection)
+- Relationship management (distinguish cold outreach from warm leads)
+- Time savings (avoid reading obvious cold emails)
+
+---
+
+### 22. Batch Analyze Emails (`batch_analyze_emails`)
+**Analyze up to 50 emails** in a single request for efficiency.
+
+**Analysis Types**: categorize, context, cold_detection (mix and match)
+
+**Example**:
+```json
+{
+  "messageIds": ["182ab45cd67ef", "182ab45cd67eg", "182ab45cd67eh"],
+  "analysisTypes": ["categorize", "cold_detection"],
+  "options": {
+    "autoApplyLabels": false,
+    "generateSummary": true
+  }
+}
+```
+
+**Response**:
+```json
+{
+  "results": [
+    {
+      "messageId": "182ab45cd67ef",
+      "category": {
+        "category": "NEWSLETTER",
+        "confidence": 0.95,
+        "reasoning": "...",
+        "suggestedLabels": ["Label_Newsletter"]
+      },
+      "coldDetection": {
+        "isColdEmail": false,
+        "coldEmailType": "LEGITIMATE",
+        "confidence": 0.92,
+        "reasoning": "...",
+        "suggestedAction": "ALLOW"
+      }
+    }
+  ],
+  "summary": "Analyzed 50 emails:\n- NEWSLETTER: 20\n- MARKETING: 15\n- WORK: 10\n- COLD_EMAIL: 5",
+  "recommendedActions": [
+    {
+      "messageId": "182ab45cd67ef",
+      "action": "ARCHIVE",
+      "reasoning": "Cold SALES email: Generic SEO services outreach"
+    }
+  ]
+}
+```
+
+**Use Cases**:
+- Daily inbox cleanup (analyze last 50 unread emails)
+- Weekly inbox purge (categorize and organize 100+ emails)
+- Meeting prep (extract context from 10 recent emails with client)
+- Inbox zero campaigns (process entire inbox in batches)
+
+---
+
+## AI Configuration
+
+### Environment Variables (Required for AI Tools)
+
+```bash
+# Primary LLM Provider (Anthropic recommended)
+LLM_PROVIDER=anthropic
+LLM_MODEL=claude-sonnet-4-5-20250929
+ANTHROPIC_API_KEY=sk-ant-your-key-here
+
+# Economy LLM (for categorization - cost-optimized)
+ECONOMY_LLM_PROVIDER=anthropic
+ECONOMY_LLM_MODEL=claude-haiku-4-5-20250929
+
+# Alternative Providers (Optional)
+OPENAI_API_KEY=sk-your-openai-key
+GOOGLE_AI_API_KEY=your-google-key
+```
+
+### Model Routing Strategy
+
+The server uses **tier-based model routing** for cost optimization:
+
+| Analysis Type | Model Tier | Default Model | Cost/Email |
+|---------------|-----------|---------------|------------|
+| **Categorization** | Economy | Claude Haiku 4.5 | ~$0.0005 |
+| **Cold Detection** | Economy | Claude Haiku 4.5 | ~$0.0005 |
+| **Context Extraction** | Default | Claude Sonnet 4.5 | ~$0.002 |
+| **Batch Analysis** | Mixed | Haiku + Sonnet | ~$0.001 |
+
+**Estimated Cost**: <$0.10 per 100 emails analyzed (with caching)
+
+### Caching Strategy
+
+Results are cached to reduce redundant LLM calls:
+
+- **Categorization**: Cached by sender (1 hour TTL)
+- **Cold Email Detection**: Cached by sender (permanent)
+- **Context Extraction**: Not cached (content varies)
+
+**Cache Hit Rate**: ~60% for typical inbox (sender-based caching)
+
+---
+
 ## Filter Management Features
 
 ### Filter Criteria
